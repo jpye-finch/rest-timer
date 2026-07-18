@@ -1,34 +1,92 @@
 import SwiftUI
 
+/// How the remaining rest is drawn. Persisted so the choice survives launches.
+enum CountdownMode: String, CaseIterable {
+    case fill
+    case squares
+
+    var label: String {
+        switch self {
+        case .fill:    return "Fill"
+        case .squares: return "Squares"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .fill:    return "square.fill.and.line.vertical.and.square"
+        case .squares: return "square.grid.3x3.fill"
+        }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var timer: RestTimerModel
     @State private var showingCustom = false
+    @AppStorage("countdownMode") private var mode: CountdownMode = .fill
 
     var body: some View {
         ZStack {
-            // Adapts automatically to light / dark appearance.
-            Color(.systemBackground).ignoresSafeArea()
+            // At completion the indicator has consumed the screen, so the
+            // ground turns over rather than special-casing a flood.
+            (timer.finished ? Theme.fill : Theme.surface)
+                .ignoresSafeArea()
+                .animation(.easeOut(duration: 0.35), value: timer.finished)
 
-            VStack(spacing: 40) {
-                presetPills
-
-                Spacer(minLength: 0)
-
-                timerDial
-
-                Spacer(minLength: 0)
-
-                controls
+            VStack(spacing: 0) {
+                topBar
+                indicator
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 24)
-            .padding(.bottom, 40)
         }
+    }
+
+    // MARK: - Top bar
+
+    private var topBar: some View {
+        Menu {
+            Picker("Rest duration", selection: presetBinding) {
+                ForEach(RestTimerModel.presets, id: \.self) { seconds in
+                    Text(ContentView.format(seconds)).tag(seconds)
+                }
+            }
+            .pickerStyle(.inline)
+
+            Button {
+                showingCustom = true
+            } label: {
+                Label("Custom…", systemImage: "slider.horizontal.3")
+            }
+
+            Picker("Style", selection: $mode) {
+                ForEach(CountdownMode.allCases, id: \.self) { m in
+                    Label(m.label, systemImage: m.icon).tag(m)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            HStack(spacing: 10) {
+                Text(timer.displayText)
+                    .font(.system(size: 56, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .tracking(-1)
+                    .foregroundStyle(numeralColor)
+                    .contentTransition(.numericText())
+                    .animation(.easeOut(duration: 0.2), value: timer.displayText)
+                    .animation(.easeOut(duration: 0.3), value: numeralColor)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Theme.ink.opacity(0.3))
+            }
+        }
+        .menuOrder(.fixed)
+        .padding(.top, 8)
+        .padding(.bottom, 22)
         .sheet(isPresented: $showingCustom) {
             CustomDurationSheet(
                 initialSeconds: timer.selectedSeconds,
                 onSelect: { seconds in
-                    timer.select(seconds: seconds)
+                    selectDuration(seconds)
                     showingCustom = false
                 }
             )
@@ -37,100 +95,71 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Ring colour (mirrors the artifact: green → amber ≤20s → red ≤10s)
-
-    private var ringColor: Color {
-        if timer.finished { return .accentColor }
+    /// Urgency rides on the numeral so the indicator stays one clean mass.
+    private var numeralColor: Color {
+        if timer.finished { return Theme.onFill }
         switch timer.urgency {
-        case .normal:  return .accentColor
-        case .warning: return .orange
-        case .urgent:  return .red
+        case .normal:  return Theme.ink
+        case .warning: return Theme.warning
+        case .urgent:  return Theme.urgent
         }
     }
 
-    private var statusText: String {
-        if timer.finished { return "GO" }
-        if timer.isRunning { return "RESTING" }
-        if timer.progress < 1 { return "PAUSED" }
-        return "TAP TO START"
-    }
+    // MARK: - Indicator
 
-    // MARK: - Preset pills
-
-    private var presetPills: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(RestTimerModel.presets, id: \.self) { seconds in
-                    Pill(
-                        label: "\(seconds)s",
-                        isSelected: timer.selectedSeconds == seconds,
-                        action: { timer.select(seconds: seconds) }
-                    )
-                }
-                Pill(
-                    label: timer.isCustomSelection ? ContentView.format(timer.selectedSeconds) : "Custom",
-                    isSelected: timer.isCustomSelection,
-                    isDashed: true,
-                    action: { showingCustom = true }
-                )
+    @ViewBuilder
+    private var indicator: some View {
+        Group {
+            switch mode {
+            case .fill:
+                FillIndicator(fraction: elapsedFraction)
+            case .squares:
+                SquaresIndicator(fraction: elapsedFraction, count: squareCount)
             }
-            .padding(.vertical, 4)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { advance() }
+        // Runs to the physical edge so the quarter marks stay evenly spaced
+        // and the fill reads as full-bleed.
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var elapsedFraction: Double {
+        1 - timer.progress
+    }
+
+    /// One square per second, so the grid's density is itself a reading of
+    /// how long the rest is. Long customs step to coarser units to stay legible.
+    private var squareCount: Int {
+        let unit = max(1, Int(ceil(Double(timer.selectedSeconds) / 400)))
+        return max(4, Int(ceil(Double(timer.selectedSeconds) / Double(unit))))
+    }
+
+    // MARK: - Actions
+
+    /// One gesture runs the whole rest: tap to start, tap again to restart
+    /// from the top.
+    private func advance() {
+        if timer.isRunning {
+            timer.reset()
+        } else {
+            timer.start()
         }
     }
 
-    // MARK: - Dial
-
-    private var timerDial: some View {
-        Button {
-            timer.toggle()
-        } label: {
-            ZStack {
-                Circle()
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 12)
-
-                Circle()
-                    .trim(from: 0, to: timer.progress)
-                    .stroke(ringColor, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.2), value: timer.progress)
-                    .animation(.easeInOut(duration: 0.3), value: ringColor)
-
-                VStack(spacing: 10) {
-                    Text(timer.displayText)
-                        .font(.system(size: 76, weight: .thin, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(timer.finished ? Color.accentColor : .primary)
-                        .contentTransition(.numericText())
-                        .animation(.easeInOut(duration: 0.2), value: timer.displayText)
-
-                    Text(statusText)
-                        .font(.system(size: 13, weight: .semibold))
-                        .tracking(3)
-                        .foregroundStyle(timer.finished ? Color.accentColor : .secondary)
-                }
-            }
-            .frame(width: 280, height: 280)
-            .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
+    /// Changing the duration mid-rest restarts at the new length, so the
+    /// numeral and the indicator never describe different rests.
+    private func selectDuration(_ seconds: Int) {
+        timer.select(seconds: seconds)
+        if timer.isRunning { timer.reset() }
     }
 
-    // MARK: - Controls
-
-    private var controls: some View {
-        HStack(spacing: 24) {
-            IconButton(system: "stop.fill") { timer.clear() }
-                .disabled(!timer.isRunning && !timer.finished && timer.progress == 1)
-
-            IconButton(system: timer.isRunning ? "pause.fill" : "play.fill", prominent: true) {
-                timer.toggle()
-            }
-
-            IconButton(system: "arrow.counterclockwise") { timer.reset() }
-        }
+    private var presetBinding: Binding<Int> {
+        Binding(
+            get: { timer.selectedSeconds },
+            set: { selectDuration($0) }
+        )
     }
-
-    // MARK: - Helpers
 
     static func format(_ seconds: Int) -> String {
         if seconds % 60 == 0 { return "\(seconds / 60):00" }
@@ -139,61 +168,127 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Preset pill
+// MARK: - Fill indicator
 
-private struct Pill: View {
-    let label: String
-    let isSelected: Bool
-    var isDashed: Bool = false
-    let action: () -> Void
+/// A block of colour rising from the bottom, with quarter marks so progress
+/// is readable without doing arithmetic on the numeral.
+private struct FillIndicator: View {
+    let fraction: Double
+
+    private static let marks: [Double] = [0.25, 0.5, 0.75, 1.0]
 
     var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 14, weight: .semibold))
-                .monospacedDigit()
-                .tracking(0.5)
-                .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .overlay(
-                    Capsule().strokeBorder(
-                        isSelected ? Color.accentColor : Color.primary.opacity(0.18),
-                        style: StrokeStyle(lineWidth: 1.5, dash: isDashed && !isSelected ? [4] : [])
+        GeometryReader { geo in
+            ZStack(alignment: .bottom) {
+                Rectangle()
+                    .fill(Theme.fill)
+                    .frame(height: geo.size.height * fraction)
+                    // Matches the model's 0.1s tick so the rise reads as
+                    // continuous motion rather than a sequence of steps.
+                    .animation(.linear(duration: 0.1), value: fraction)
+
+                ForEach(Self.marks, id: \.self) { mark in
+                    Rectangle()
+                        .fill(Theme.ink.opacity(0.15))
+                        .frame(height: 1)
+                        .offset(y: -geo.size.height * mark)
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
+        }
+    }
+}
+
+// MARK: - Squares indicator
+
+/// The same progress as a mosaic: squares light in a scattered order until
+/// the screen is solid.
+private struct SquaresIndicator: View {
+    let fraction: Double
+    let count: Int
+
+    /// Fixed shuffle per grid size. Recomputed only when the size changes, so
+    /// squares never rearrange mid-rest.
+    @State private var order: [Int] = []
+
+    var body: some View {
+        GeometryReader { geo in
+            let grid = Self.grid(count: count, size: geo.size)
+            let total = grid.cols * grid.rows
+            let lit = Int((Double(count) * fraction).rounded())
+
+            Canvas { context, size in
+                guard !order.isEmpty else { return }
+                let cellW = size.width / Double(grid.cols)
+                let cellH = size.height / Double(grid.rows)
+                let gap = min(2, min(cellW, cellH) * 0.08)
+
+                for i in 0..<min(lit, order.count) {
+                    let index = order[i]
+                    let col = index % grid.cols
+                    let row = index / grid.cols
+                    let rect = CGRect(
+                        x: Double(col) * cellW + gap / 2,
+                        y: Double(row) * cellH + gap / 2,
+                        width: cellW - gap,
+                        height: cellH - gap
                     )
-                )
+                    context.fill(Path(rect), with: .color(Theme.fill))
+                }
+            }
+            .animation(.easeOut(duration: 0.18), value: lit)
+            .onAppear { rebuild(total) }
+            .onChange(of: total) { newTotal in rebuild(newTotal) }
         }
-        .buttonStyle(.plain)
+    }
+
+    private func rebuild(_ total: Int) {
+        guard total != order.count else { return }
+        order = Array(0..<total).shuffled()
+    }
+
+    /// Columns chosen so cells come out close to square for the given area.
+    private static func grid(count: Int, size: CGSize) -> (cols: Int, rows: Int) {
+        guard size.height > 0, count > 0 else { return (1, 1) }
+        let ratio = size.width / size.height
+        let cols = max(1, Int((Double(count) * ratio).squareRoot().rounded()))
+        let rows = max(1, Int(ceil(Double(count) / Double(cols))))
+        return (cols, rows)
     }
 }
 
-// MARK: - Circular icon button
+// MARK: - Palette
 
-private struct IconButton: View {
-    let system: String
-    var prominent: Bool = false
-    let action: () -> Void
+/// Neutrals are tinted toward the fill hue rather than sitting at pure black
+/// and white, which keeps the screen from looking like a default.
+private enum Theme {
+    static let fill = Color(red: 0.78, green: 0.95, blue: 0.29)
 
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: system)
-                .font(.system(size: prominent ? 28 : 20, weight: .medium))
-                .foregroundStyle(prominent ? Color.white : Color.primary)
-                .frame(width: prominent ? 76 : 58, height: prominent ? 76 : 58)
-                .background(
-                    Circle().fill(prominent ? Color.accentColor : Color.primary.opacity(0.06))
-                )
-        }
-        .buttonStyle(PressableButtonStyle())
-    }
-}
+    static let surface = adaptive(
+        light: (0.98, 0.98, 0.96),
+        dark:  (0.05, 0.06, 0.05)
+    )
 
-private struct PressableButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.6 : 1)
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    static let ink = adaptive(
+        light: (0.07, 0.08, 0.06),
+        dark:  (0.95, 0.96, 0.93)
+    )
+
+    /// Text on the fill stays dark in both appearances: the fill itself does
+    /// not change between them.
+    static let onFill = Color(red: 0.07, green: 0.08, blue: 0.06)
+
+    static let warning = Color(red: 0.85, green: 0.52, blue: 0.05)
+    static let urgent  = Color(red: 0.86, green: 0.20, blue: 0.18)
+
+    private static func adaptive(
+        light: (Double, Double, Double),
+        dark: (Double, Double, Double)
+    ) -> Color {
+        Color(UIColor { trait in
+            let c = trait.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
     }
 }
 

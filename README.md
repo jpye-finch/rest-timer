@@ -4,10 +4,12 @@ A small native SwiftUI iOS app for timing rest periods between workout sets.
 
 ## Features
 
-- **Preset durations** — one-tap pills for 30s, 60s, 90s, 120s, 150s, 180s, 240s, and 300s.
+- **Two countdown styles** — a full-bleed **Fill** that rises from the bottom past quarter marks, or **Squares** that light in a scattered order until the screen is solid. The choice persists between launches.
+- **Grid scaled to the rest** — Squares draws one square per second, so a 30s rest is 30 chunky blocks and a 5:00 rest is 300 small ones. Long custom durations step to coarser units.
+- **Tap anywhere** — tap to start the rest, tap again mid-rest to restart from the top. No buttons.
+- **Preset durations** — 30s, 60s, 90s, 120s, 150s, 180s, 240s, and 300s, chosen from the countdown's own menu.
 - **Custom duration** — a wheel picker (minutes + seconds) for any rest length up to 60 minutes.
-- **Tappable countdown dial** — tap the ring to start / pause, with thin, modern numerals.
-- **Colour-cued ring** — green while resting, amber in the final 20s, red in the final 10s, and a green **GO** at zero.
+- **Colour-cued numerals** — the countdown turns amber in the final 20s and red in the final 10s; the screen floods at zero.
 - **Light & dark mode** — built on semantic colours, so it adapts to the system appearance.
 - **Background-accurate** — the countdown is anchored to an absolute end date, so it stays correct while the app is backgrounded.
 - **Local notification on completion** — a time-sensitive alert fires when the rest is up, even if the app is suspended.
@@ -19,7 +21,7 @@ A small native SwiftUI iOS app for timing rest periods between workout sets.
 RestTimer.xcodeproj          Xcode project
 RestTimer/
   RestTimerApp.swift         App entry point; wires up the shared model + notifications
-  ContentView.swift          UI: dial, preset chips, custom-duration sheet, controls
+  ContentView.swift          UI: countdown menu, fill / squares indicators, custom-duration sheet
   RestTimerModel.swift        Countdown state machine (start/pause/reset/add)
   NotificationManager.swift   Permission, scheduling, and interactive notification actions
   Assets.xcassets            App icon + accent color
