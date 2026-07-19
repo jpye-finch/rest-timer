@@ -9,11 +9,11 @@ A small native SwiftUI iOS app for timing rest periods between workout sets.
 - **Tap anywhere** — tap to start the rest, tap again mid-rest to restart from the top. No buttons.
 - **Preset durations** — 30s, 60s, 90s, 120s, 150s, 180s, 240s, and 300s, chosen from the countdown's own menu.
 - **Custom duration** — a wheel picker (minutes + seconds) for any rest length up to 60 minutes.
-- **Colour-cued numerals** — the countdown turns amber in the final 20s and red in the final 10s; the screen floods at zero.
+- **Flood at zero** — the whole screen turns over to the fill colour the moment the rest is up.
 - **Light & dark mode** — built on semantic colours, so it adapts to the system appearance.
 - **Background-accurate** — the countdown is anchored to an absolute end date, so it stays correct while the app is backgrounded.
 - **Local notification on completion** — a time-sensitive alert fires when the rest is up, even if the app is suspended.
-- **Reset from the notification** — the alert carries a **Reset Timer** action (and a **+1:00** action) so you can restart the next rest without reopening the app.
+- **Reset from the notification** — the alert carries a **Reset Timer** action so you can restart the next rest without reopening the app.
 
 ## Project layout
 

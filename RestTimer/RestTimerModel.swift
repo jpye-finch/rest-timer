@@ -18,20 +18,6 @@ final class RestTimerModel: ObservableObject {
     /// True for the brief "GO" moment after a rest completes.
     @Published private(set) var finished: Bool = false
 
-    /// How close the countdown is to zero — drives the ring's colour.
-    enum Urgency {
-        case normal   // plenty of time
-        case warning  // final 20s
-        case urgent   // final 10s
-    }
-
-    var urgency: Urgency {
-        guard isRunning else { return .normal }
-        if remaining <= 10 { return .urgent }
-        if remaining <= 20 { return .warning }
-        return .normal
-    }
-
     private var endDate: Date?
     private var ticker: AnyCancellable?
 
@@ -88,18 +74,6 @@ final class RestTimerModel: ObservableObject {
         endDate = nil
         remaining = TimeInterval(selectedSeconds)
         NotificationManager.shared.cancelPending()
-    }
-
-    /// Add seconds to a running (or paused) timer.
-    func addSeconds(_ seconds: Int) {
-        if isRunning, let end = endDate {
-            let newEnd = end.addingTimeInterval(TimeInterval(seconds))
-            endDate = newEnd
-            remaining = max(0, newEnd.timeIntervalSinceNow)
-            NotificationManager.shared.scheduleCompletion(at: newEnd, seconds: selectedSeconds)
-        } else {
-            remaining = max(1, remaining + TimeInterval(seconds))
-        }
     }
 
     // MARK: - Internals

@@ -18,7 +18,6 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     private enum Action: String {
         case reset = "RESET_ACTION"
-        case addMinute = "ADD_MINUTE_ACTION"
     }
 
     override init() {
@@ -40,14 +39,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             title: "Reset Timer",
             options: [.foreground]
         )
-        let addMinute = UNNotificationAction(
-            identifier: Action.addMinute.rawValue,
-            title: "+1:00",
-            options: []
-        )
         let category = UNNotificationCategory(
             identifier: categoryID,
-            actions: [reset, addMinute],
+            actions: [reset],
             intentIdentifiers: [],
             options: []
         )
@@ -95,10 +89,6 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             switch action {
             case .reset:
                 self.timer?.reset()
-            case .addMinute:
-                self.timer?.select(seconds: (self.timer?.selectedSeconds ?? 60))
-                self.timer?.reset()
-                self.timer?.addSeconds(60)
             case .none:
                 break
             }

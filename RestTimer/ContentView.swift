@@ -20,59 +20,155 @@ enum CountdownMode: String, CaseIterable {
     }
 }
 
+/// The colour the indicator fills with. Every option is light enough that the
+/// countdown, which is always near-black, stays legible sitting on top of it.
+enum FillColour: String, CaseIterable {
+    case lime, mint, aqua, sky, lilac, pink, coral, amber
+
+    var label: String {
+        switch self {
+        case .lime:  return "Lime"
+        case .mint:  return "Mint"
+        case .aqua:  return "Aqua"
+        case .sky:   return "Sky"
+        case .lilac: return "Lilac"
+        case .pink:  return "Pink"
+        case .coral: return "Coral"
+        case .amber: return "Amber"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .lime:  return Color(red: 0.78, green: 0.95, blue: 0.29)
+        case .mint:  return Color(red: 0.44, green: 0.93, blue: 0.68)
+        case .aqua:  return Color(red: 0.36, green: 0.86, blue: 0.91)
+        case .sky:   return Color(red: 0.55, green: 0.78, blue: 1.00)
+        case .lilac: return Color(red: 0.74, green: 0.66, blue: 0.99)
+        case .pink:  return Color(red: 1.00, green: 0.62, blue: 0.82)
+        case .coral: return Color(red: 1.00, green: 0.58, blue: 0.45)
+        case .amber: return Color(red: 1.00, green: 0.80, blue: 0.25)
+        }
+    }
+
+    /// Menus render template images by default, so a swatch has to be drawn
+    /// and handed over with its original colours intact.
+    var swatch: UIImage {
+        let side = 22.0
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let image = renderer.image { context in
+            UIColor(color).setFill()
+            context.cgContext.fillEllipse(
+                in: CGRect(x: 1, y: 1, width: side - 2, height: side - 2)
+            )
+        }
+        return image.withRenderingMode(.alwaysOriginal)
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var timer: RestTimerModel
     @State private var showingCustom = false
     @AppStorage("countdownMode") private var mode: CountdownMode = .fill
+    @AppStorage("fillColour") private var fillColour: FillColour = .lime
 
     var body: some View {
-        ZStack {
-            // At completion the indicator has consumed the screen, so the
-            // ground turns over rather than special-casing a flood.
-            (timer.finished ? Theme.fill : Theme.surface)
+        ZStack(alignment: .top) {
+            // Squares leave gaps between cells, so the ground turns over at
+            // completion to make the flood solid in both styles.
+            (timer.finished ? fillColour.color : Theme.surface)
                 .ignoresSafeArea()
                 .animation(.easeOut(duration: 0.35), value: timer.finished)
 
-            VStack(spacing: 0) {
-                topBar
-                indicator
-            }
+            indicator
+                .ignoresSafeArea()
+
+            topBar
         }
+        // The fill is the surface, and dark text has to read on it at any
+        // height, so this screen commits to one appearance.
+        .preferredColorScheme(.light)
     }
 
     // MARK: - Top bar
 
     private var topBar: some View {
+        // Buttons throughout rather than Pickers: a Picker ignores a tap on
+        // the value already selected, and two Pickers in one Menu left the
+        // second selection unwritten. The headers also push the first row
+        // clear of the countdown, which the menu opens directly on top of.
         Menu {
-            Picker("Rest duration", selection: presetBinding) {
+            Section("Rest length") {
                 ForEach(RestTimerModel.presets, id: \.self) { seconds in
-                    Text(ContentView.format(seconds)).tag(seconds)
+                    Button {
+                        selectDuration(seconds)
+                    } label: {
+                        if timer.selectedSeconds == seconds {
+                            Label(ContentView.format(seconds), systemImage: "checkmark")
+                        } else {
+                            Text(ContentView.format(seconds))
+                        }
+                    }
+                }
+
+                Button {
+                    showingCustom = true
+                } label: {
+                    Label("Custom…", systemImage: "slider.horizontal.3")
                 }
             }
-            .pickerStyle(.inline)
 
-            Button {
-                showingCustom = true
-            } label: {
-                Label("Custom…", systemImage: "slider.horizontal.3")
-            }
+            // Submenus keep appearance out of the way of the durations, which
+            // are the rows actually reached mid-workout.
+            Section {
+                Menu {
+                    ForEach(CountdownMode.allCases, id: \.self) { style in
+                        Button {
+                            mode = style
+                        } label: {
+                            Label(
+                                style.label,
+                                systemImage: mode == style ? "checkmark" : style.icon
+                            )
+                        }
+                    }
+                } label: {
+                    Label("Style", systemImage: mode.icon)
+                }
 
-            Picker("Style", selection: $mode) {
-                ForEach(CountdownMode.allCases, id: \.self) { m in
-                    Label(m.label, systemImage: m.icon).tag(m)
+                Menu {
+                    ForEach(FillColour.allCases, id: \.self) { colour in
+                        Button {
+                            fillColour = colour
+                        } label: {
+                            if fillColour == colour {
+                                Label(colour.label, systemImage: "checkmark")
+                            } else {
+                                Label {
+                                    Text(colour.label)
+                                } icon: {
+                                    Image(uiImage: colour.swatch)
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Label {
+                        Text("Colour")
+                    } icon: {
+                        Image(uiImage: fillColour.swatch)
+                    }
                 }
             }
-            .pickerStyle(.inline)
         } label: {
             HStack(spacing: 10) {
                 Text(timer.displayText)
                     .font(.system(size: 56, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .tracking(-1)
-                    .foregroundStyle(numeralColor)
+                    .foregroundStyle(Theme.ink)
                     .contentTransition(.numericText())
                     .animation(.easeOut(duration: 0.2), value: timer.displayText)
-                    .animation(.easeOut(duration: 0.3), value: numeralColor)
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 15, weight: .bold))
@@ -81,7 +177,6 @@ struct ContentView: View {
         }
         .menuOrder(.fixed)
         .padding(.top, 8)
-        .padding(.bottom, 22)
         .sheet(isPresented: $showingCustom) {
             CustomDurationSheet(
                 initialSeconds: timer.selectedSeconds,
@@ -95,16 +190,6 @@ struct ContentView: View {
         }
     }
 
-    /// Urgency rides on the numeral so the indicator stays one clean mass.
-    private var numeralColor: Color {
-        if timer.finished { return Theme.onFill }
-        switch timer.urgency {
-        case .normal:  return Theme.ink
-        case .warning: return Theme.warning
-        case .urgent:  return Theme.urgent
-        }
-    }
-
     // MARK: - Indicator
 
     @ViewBuilder
@@ -112,16 +197,17 @@ struct ContentView: View {
         Group {
             switch mode {
             case .fill:
-                FillIndicator(fraction: elapsedFraction)
+                FillIndicator(fraction: elapsedFraction, colour: fillColour.color)
             case .squares:
-                SquaresIndicator(fraction: elapsedFraction, count: squareCount)
+                SquaresIndicator(
+                    fraction: elapsedFraction,
+                    count: squareCount,
+                    colour: fillColour.color
+                )
             }
         }
         .contentShape(Rectangle())
         .onTapGesture { advance() }
-        // Runs to the physical edge so the quarter marks stay evenly spaced
-        // and the fill reads as full-bleed.
-        .ignoresSafeArea(edges: .bottom)
     }
 
     private var elapsedFraction: Double {
@@ -147,18 +233,12 @@ struct ContentView: View {
         }
     }
 
-    /// Changing the duration mid-rest restarts at the new length, so the
-    /// numeral and the indicator never describe different rests.
+    /// Picking a length mid-rest restarts at that length, including when it
+    /// is the one already selected, so the menu always means "rest this long,
+    /// starting now".
     private func selectDuration(_ seconds: Int) {
         timer.select(seconds: seconds)
         if timer.isRunning { timer.reset() }
-    }
-
-    private var presetBinding: Binding<Int> {
-        Binding(
-            get: { timer.selectedSeconds },
-            set: { selectDuration($0) }
-        )
     }
 
     static func format(_ seconds: Int) -> String {
@@ -174,14 +254,17 @@ struct ContentView: View {
 /// is readable without doing arithmetic on the numeral.
 private struct FillIndicator: View {
     let fraction: Double
+    let colour: Color
 
-    private static let marks: [Double] = [0.25, 0.5, 0.75, 1.0]
+    /// Quarter marks only. The screen's own edges bound the run, so lines at
+    /// 0 and 100% would just be borders.
+    private static let marks: [Double] = [0.25, 0.5, 0.75]
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
                 Rectangle()
-                    .fill(Theme.fill)
+                    .fill(colour)
                     .frame(height: geo.size.height * fraction)
                     // Matches the model's 0.1s tick so the rise reads as
                     // continuous motion rather than a sequence of steps.
@@ -206,6 +289,7 @@ private struct FillIndicator: View {
 private struct SquaresIndicator: View {
     let fraction: Double
     let count: Int
+    let colour: Color
 
     /// Fixed shuffle per grid size. Recomputed only when the size changes, so
     /// squares never rearrange mid-rest.
@@ -233,7 +317,7 @@ private struct SquaresIndicator: View {
                         width: cellW - gap,
                         height: cellH - gap
                     )
-                    context.fill(Path(rect), with: .color(Theme.fill))
+                    context.fill(Path(rect), with: .color(colour))
                 }
             }
             .animation(.easeOut(duration: 0.18), value: lit)
@@ -262,34 +346,8 @@ private struct SquaresIndicator: View {
 /// Neutrals are tinted toward the fill hue rather than sitting at pure black
 /// and white, which keeps the screen from looking like a default.
 private enum Theme {
-    static let fill = Color(red: 0.78, green: 0.95, blue: 0.29)
-
-    static let surface = adaptive(
-        light: (0.98, 0.98, 0.96),
-        dark:  (0.05, 0.06, 0.05)
-    )
-
-    static let ink = adaptive(
-        light: (0.07, 0.08, 0.06),
-        dark:  (0.95, 0.96, 0.93)
-    )
-
-    /// Text on the fill stays dark in both appearances: the fill itself does
-    /// not change between them.
-    static let onFill = Color(red: 0.07, green: 0.08, blue: 0.06)
-
-    static let warning = Color(red: 0.85, green: 0.52, blue: 0.05)
-    static let urgent  = Color(red: 0.86, green: 0.20, blue: 0.18)
-
-    private static func adaptive(
-        light: (Double, Double, Double),
-        dark: (Double, Double, Double)
-    ) -> Color {
-        Color(UIColor { trait in
-            let c = trait.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
-        })
-    }
+    static let surface = Color(red: 0.98, green: 0.98, blue: 0.97)
+    static let ink     = Color(red: 0.07, green: 0.08, blue: 0.07)
 }
 
 // MARK: - Custom duration sheet
